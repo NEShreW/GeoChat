@@ -1,0 +1,1733 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>GeoWebChat — Aligned video grid + DM badges + Media controls (Fixed background)</title>
+  <script src="https://cdn.jsdelivr.net/npm/peerjs@1.4.7/dist/peerjs.min.js"></script>
+  <style>
+    
+    :root{
+      --page-bg: #f4f6fb;
+      --card-bg: #ffffff;
+      --muted: #6b7280;
+      --accent: #3b82f6;
+      --accent-2: #6366f1;
+      --danger: #ef4444;
+      --shadow: 0 8px 30px rgba(16,24,40,0.06);
+      --radius: 12px;
+      --name-color: #0f172a;
+      --avatar-size: 40px;
+      --badge-bg: #ef4444;
+      --badge-color: #fff;
+      --control-bg: rgba(255,255,255,0.06);
+    }
+
+    html,body { height: 100%; margin:0; }
+    body {
+      /* stationary (fixed) background */
+      background: linear-gradient(180deg, var(--page-bg) 0%, #eef4ff 100%);
+      background-attachment: fixed;
+      background-position: center top;
+      background-repeat: no-repeat;
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      color: #0f172a;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      padding: 18px;
+    }
+
+    .app {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 320px 1fr 260px;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .left-panel {
+      background: linear-gradient(180deg,#fff,#fbfdff);
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: var(--shadow);
+      border:1px solid rgba(99,102,241,0.04);
+      height: calc(100vh - 36px);
+      overflow:auto;
+    }
+
+    .left-panel h3{ margin:6px 0 10px 0; font-size:14px; }
+    .group-list { display:flex; flex-direction:column; gap:8px; }
+    .group-row { display:flex; align-items:center; justify-content:space-between; padding:8px; border-radius:10px; cursor:pointer; background:linear-gradient(180deg, rgba(59,130,246,0.03), rgba(99,102,241,0.02)); border:1px solid rgba(99,102,241,0.03); position:relative; }
+    .group-row .btn{ padding:6px 10px; border-radius:8px; font-weight:700; background:transparent; color:#374151; border:1px solid rgba(15,23,42,0.06); }
+    .group-row.selected{ outline:2px solid rgba(59,130,246,0.14); box-shadow: 0 8px 18px rgba(59,130,246,0.06); transform: translateY(-1px); }
+    .group-row .badge { background: var(--badge-bg); color: var(--badge-color); padding:2px 8px; border-radius:999px; font-weight:700; font-size:12px; margin-left:8px; min-width:20px; text-align:center; }
+
+    .main {
+      background: linear-gradient(180deg,var(--card-bg),#fbfdff);
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: var(--shadow);
+      border:1px solid rgba(99,102,241,0.04);
+      min-height: calc(100vh - 36px);
+      display:flex; flex-direction:column;
+      overflow:hidden;
+    }
+
+    .topbar { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+    .topbar .title { font-weight:800; font-size:16px; }
+    .controls { margin-left:auto; display:flex; gap:8px; align-items:center; }
+
+    #messages { flex:1; min-height:120px; max-height:360px; overflow:auto; padding:12px; border-radius:10px; border: 1px solid #eef2ff; background: linear-gradient(180deg,var(--card-bg),#fbfdff); }
+    .message { display:flex; gap:12px; margin-bottom:12px; align-items:flex-start; }
+    .avatar { width:var(--avatar-size); height:var(--avatar-size); border-radius:8px; background: linear-gradient(180deg,#eef2ff,#eef7ff); display:flex; align-items:center; justify-content:center; font-size:16px; color:#0f172a; overflow:hidden; flex-shrink:0; }
+    .avatar img { width:100%; height:100%; object-fit:cover; display:block; }
+
+    .bubble { background: rgba(15,23,42,0.03); padding:8px 10px; border-radius:8px; }
+    .meta { font-weight:700; color:var(--name-color); font-size:13px; margin-bottom:6px; }
+    .body { color:#0f172a; font-size:14px; white-space:pre-wrap; word-break:break-word; }
+
+    .composer { display:flex; gap:8px; margin-top:8px; align-items:center; }
+    .composer input { flex:1; padding:10px; border-radius:10px; border:1px solid #e6e9f2; }
+
+    /* Aligned video grid (non-staggered). Use equal-height cards */
+    #videoGrid { margin-top:12px; display:none; gap:12px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); grid-auto-rows: 180px; align-items:stretch; }
+    .videoCard { position:relative; border-radius:12px; overflow:hidden; background:#000; display:flex; flex-direction:column; box-shadow: 0 6px 18px rgba(2,6,23,0.04); border:1px solid rgba(255,255,255,0.03); height:100%; }
+    .videoCardInner { position:relative; flex:1; min-height:120px; display:flex; align-items:stretch; }
+    .videoCard video { width:100%; height:100%; object-fit:cover; display:block; }
+    .videoFooter { padding:8px 10px; background: rgba(0,0,0,0.28); color:#fff; font-weight:700; font-size:13px; display:flex; justify-content:space-between; align-items:center; }
+
+    .videoLabel { color:#fff; font-weight:700; padding:6px 8px; border-radius:9px; background:rgba(0,0,0,0.32); z-index:3; font-size:13px; }
+
+    .videoActions { position:absolute; right:8px; top:8px; z-index:3; display:flex; gap:8px; }
+
+    .local-preview { width:260px; border-radius:10px; overflow:hidden; background:#000; margin-top:10px; display:none; position:relative; }
+    .local-preview video { width:100%; height:150px; object-fit:cover; }
+
+    .right-panel {
+      background: linear-gradient(180deg,var(--card-bg),#fbfdff);
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: var(--shadow);
+      border:1px solid rgba(99,102,241,0.04);
+      height: calc(100vh - 36px);
+      overflow:auto;
+    }
+    .members-list { display:flex; flex-direction:column; gap:8px; margin-top:8px; }
+    .member-row { display:flex; align-items:center; justify-content:space-between; padding:8px; border-radius:8px; border:1px solid rgba(99,102,241,0.03); background:linear-gradient(180deg,#fff,#fbfdff); }
+    .member-row .self-row { opacity:0.65; font-style:italic; pointer-events:none; }
+    .member-row .member-bubble { background: var(--badge-bg); color: var(--badge-color); padding:2px 8px; border-radius:999px; font-weight:700; font-size:12px; margin-left:8px; min-width:20px; text-align:center; }
+
+    .overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 14000; display:none; align-items:center; justify-content:center; padding:20px;
+    }
+    .overlay-grid {
+      width:100%; height:100%; display:grid; gap:8px; align-items:stretch; justify-items:stretch;
+    }
+    .overlay-close { position:fixed; top:18px; right:18px; z-index:14010; padding:10px 12px; border-radius:8px; background:var(--accent); color:#fff; border:none; cursor:pointer; }
+
+    .incoming-call-modal {
+      position: fixed;
+      left: 50%;
+      top: 16%;
+      transform: translateX(-50%);
+      z-index: 16000;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 12px 40px rgba(2,6,23,0.4);
+      padding: 14px 16px;
+      display: none;
+      min-width: 320px;
+      border: 1px solid rgba(99,102,241,0.06);
+    }
+    .incoming-call-modal .title { font-weight:800; margin-bottom:8px; }
+    .incoming-call-modal .meta { color:var(--muted); margin-bottom:12px; }
+    .incoming-call-actions { display:flex; gap:8px; justify-content:flex-end; }
+    .accept { background: linear-gradient(90deg,#10b981,#059669); color:#fff; padding:8px 12px; border-radius:8px; border:0; cursor:pointer; font-weight:700; }
+    .decline { background:#f3f4f6; color:#374151; padding:8px 12px; border-radius:8px; border:1px solid rgba(15,23,42,0.06); cursor:pointer; }
+
+    .auto-row { display:flex; gap:8px; align-items:center; margin-top:8px; }
+
+    .small-btn { padding:8px 10px; border-radius:8px; border:0; cursor:pointer; font-weight:700; background: linear-gradient(90deg,var(--accent),var(--accent-2)); color:#fff; }
+    .ghost { background:transparent; color:#374151; border:1px solid rgba(15,23,42,0.06); box-shadow:none; padding:8px 10px; border-radius:8px; cursor:pointer; }
+    .danger { background:var(--danger); color:#fff; border:0; padding:8px 10px; border-radius:8px; cursor:pointer; font-weight:700; }
+
+    /* settings modal */
+    .settings-modal {
+      position: fixed;
+      right: 24px;
+      top: 72px;
+      width: 420px;
+      z-index: 17000;
+      background: var(--card-bg);
+      border-radius: 12px;
+      padding: 14px;
+      box-shadow: 0 20px 60px rgba(2,6,23,0.3);
+      display: none;
+      border: 1px solid rgba(99,102,241,0.06);
+    }
+    .settings-modal h4 { margin:0 0 10px 0; font-size:16px; font-weight:800; }
+    .settings-row { display:flex; gap:8px; margin-bottom:10px; align-items:center; }
+    .avatar-presets { display:flex; gap:6px; flex-wrap:wrap; }
+    .avatar-preset { width:46px; height:46px; border-radius:8px; display:flex; align-items:center; justify-content:center; cursor:pointer; border:1px solid rgba(0,0,0,0.05); background:#fff; font-size:20px; }
+    .settings-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:12px; }
+
+    .settings-note { font-size:12px; color:var(--muted); margin-top:6px; }
+
+    @media (max-width: 1100px){
+      .app { grid-template-columns:56px 1fr; }
+      .left-panel { display:none; }
+      .right-panel { order:99; width:100%; grid-column:1/-1; }
+      .settings-modal { right: 8px; top: 64px; width: 92%; }
+      #videoGrid { grid-auto-rows: 160px; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+    }
+
+    .preview-name { font-weight:800; color:var(--name-color); font-size:13px; margin-bottom:6px; display:block; }
+    .preview-box { display:flex; gap:8px; align-items:center; }
+    .divider { height:1px; background:rgba(0,0,0,0.04); margin:10px 0; border-radius:2px; }
+
+    /* media control bar */
+    .media-controls {
+      display:flex; gap:8px; align-items:center;
+      background: var(--control-bg);
+      padding:6px; border-radius:10px;
+    }
+    .media-controls button.active { box-shadow: 0 4px 12px rgba(0,0,0,0.12); transform: translateY(-1px); }
+    .media-controls button { background:transparent; border:0; color:#fff; padding:8px; border-radius:8px; cursor:pointer; font-weight:700; }
+    .media-controls .muted { background:rgba(255,0,0,0.12); color:#fff; }
+    .media-controls .cam-off { background:rgba(0,0,0,0.12); color:#fff; }
+    .control-label { font-size:13px; color:#fff; margin-left:6px; }
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <div class="left-panel" id="leftPanel">
+      <h3>Groups</h3>
+      <div id="groupList" class="group-list"></div>
+
+      <div style="margin-top:12px">
+        <input id="newGroupNameLeft" placeholder="New group name" style="width:100%; padding:8px; border-radius:8px; border:1px solid #e6e9f2">
+        <div style="margin-top:8px; display:flex; gap:8px">
+          <button id="createGroupLeft" class="small-btn">Create</button>
+          <button id="refreshPeersLeft" class="small-btn ghost">Refresh</button>
+        </div>
+      </div>
+
+<!-- Add this somewhere in your HTML UI, maybe near your peer/group controls -->
+  <div id="manualConnectContainer" style="margin-top:10px;">
+    <input type="text" id="manualPeerId" placeholder="Enter peer ID" />
+    <button id="manualConnectBtn">Connect</button>
+  </div>
+      <div style="margin-top:14px;">
+        <div style="font-weight:700; margin-bottom:6px">Identity</div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input id="username" placeholder="your username" style="flex:1; padding:8px; border-radius:8px; border:1px solid #e6e9f2">
+          <button id="setNameBtn" class="small-btn">Set</button>
+        </div>
+        <div class="auto-row">
+          <label style="font-weight:600; color:#374151;">
+            <input type="checkbox" id="autoConnectCheckbox"> Auto-Connect
+          </label>
+          <div id="autoConnectStatus" style="color:#6b7280; font-size:13px">(off)</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="main" id="main">
+      <div class="topbar">
+        <div class="title" id="currentRoomTitle"># general</div>
+        <div class="controls">
+          <button id="joinCurrentCallBtn" class="small-btn" style="display:none">Join Current Call</button>
+
+          <button id="fullscreenBtn" class="small-btn" title="Fullscreen view">Fullscreen</button>
+
+          <button id="callGroupBtnMain" class="small-btn">Call Group</button>
+
+          <button id="settingsBtn" class="small-btn ghost" title="Settings">⚙️</button>
+        </div>
+      </div>
+
+      <div id="messages" aria-live="polite"></div>
+
+      <div class="composer">
+        <input id="fileToSend" type="file" style="max-width:220px" />
+        <button id="sendFileBtn" class="small-btn">Send File</button>
+    
+        <input id="text" placeholder="Message..." />
+        <button id="sendBtn" class="small-btn">Send</button>
+      </div>
+
+      <div id="videoGrid"></div>
+
+      <div style="display:flex; justify-content:space-between; gap:8px; margin-top:10px;">
+        <div class="local-preview" id="localPreview">
+          <video id="localVideo" autoplay muted playsinline></video>
+        </div>
+
+        <div style="display:flex; align-items:center;">
+          <div class="media-controls" id="localControls" style="display:none;">
+            <button id="toggleCamBtn" title="Toggle camera">📷</button>
+            <button id="toggleMuteBtn" title="Toggle mute">🎙️</button>
+            <button id="shareScreenBtn" title="Share screen">🖥️</button>
+            <button id="hangupBtn" title="Hang up" class="danger">⏹</button>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="right-panel" id="rightPanel">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <div style="font-weight:800">Members</div>
+        <div style="flex:1"></div>
+        <button id="leaveAllBtnRight" class="danger" disabled>Leave All</button>
+      </div>
+
+      <div id="membersList" class="members-list"></div>
+
+      <div style="margin-top:12px">
+        <div style="font-weight:700; margin-bottom:6px">DM</div>
+        <select id="dmDropdown" style="width:100%; padding:8px; border-radius:8px; border:1px solid #e6e9f2"><option value="">-- select peer --</option></select>
+      </div>
+
+      <div class="log" id="miniLog" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <div id="everyoneOverlay" class="overlay">
+    <button id="closeEveryoneOverlay" class="overlay-close">Close</button>
+    <div id="everyoneGrid" class="overlay-grid"></div>
+  </div>
+
+  <div id="incomingCallModal" class="incoming-call-modal" role="dialog" aria-hidden="true">
+    <div class="title">Incoming call</div>
+    <div class="meta" id="incomingCallFrom">From: ?</div>
+    <div class="incoming-call-actions">
+      <button id="declineCallBtn" class="decline">Decline</button>
+      <button id="acceptCallBtn" class="accept">Accept</button>
+    </div>
+  </div>
+
+  <div id="settingsModal" class="settings-modal" role="dialog" aria-hidden="true" style="overflow-y:auto; max-height:90vh;">
+    <h4>Customization</h4>
+
+    <div class="settings-row">
+      <div style="flex:1">
+        <label class="preview-name" id="previewNameLabel">Your name: <strong id="previewNameText">Me</strong></label>
+        <div class="preview-box">
+          <div class="avatar" id="previewAvatar" style="width:46px;height:46px;border-radius:8px;"></div>
+          <div style="flex:1">
+            <div style="display:flex; gap:8px;">
+              <input id="avatarFile" type="file" accept="image/*" style="flex:1" />
+              <button id="clearAvatarBtn" class="ghost">Clear</button>
+            </div>
+            <div class="settings-note">Upload a custom avatar or pick a preset below</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:8px; font-weight:700">Avatar presets</div>
+    <div class="avatar-presets" id="avatarPresets"></div>
+<!-- RINGTONE UPLOAD -->
+<div style="padding:10px">
+  <label>Ringtone: <input type="file" id="ringtoneFile" accept="audio/*"></label>
+</div>
+<audio id="ringtonePlayer" preload="auto"></audio>
+
+
+    <div class="divider"></div>
+
+    <div style="font-weight:700; margin-bottom:6px">Theme Colors</div>
+    <div style="font-size:13px; color:var(--muted); margin-bottom:6px">Pick colors for the UI. These change CSS variables live.</div>
+
+    <div class="settings-row">
+      <div style="flex:1">
+        <div style="font-size:12px; color:var(--muted); margin-bottom:6px">Page background</div>
+        <input id="colorPageBg" type="color" style="width:100%; height:40px; border-radius:8px; padding:4px" />
+      </div>
+    </div>
+
+    <div class="settings-row">
+      <div style="flex:1">
+        <div style="font-size:12px; color:var(--muted); margin-bottom:6px">Card background</div>
+        <input id="colorCardBg" type="color" style="width:100%; height:40px; border-radius:8px; padding:4px" />
+      </div>
+    </div>
+
+    <div class="settings-row">
+      <div style="flex:1">
+        <div style="font-size:12px; color:var(--muted); margin-bottom:6px">Accent color</div>
+        <input id="colorAccent" type="color" style="width:100%; height:40px; border-radius:8px; padding:4px" />
+      </div>
+      <div style="width:16px"></div>
+      <div style="flex:1">
+        <div style="font-size:12px; color:var(--muted); margin-bottom:6px">Accent 2</div>
+        <input id="colorAccent2" type="color" style="width:100%; height:40px; border-radius:8px; padding:4px" />
+      </div>
+    </div>
+
+    <div class="settings-row">
+      <div style="flex:1">
+        <div style="font-size:12px; color:var(--muted); margin-bottom:6px">Name color</div>
+        <input id="colorName" type="color" style="width:100%; height:40px; border-radius:8px; padding:4px" />
+      </div>
+    </div>
+
+    <!-- Keybind customization inputs -->
+    <div style="margin-top:10px; font-weight:700">Keyboard Shortcuts</div>
+    <div style="font-size:13px; color:var(--muted); margin-bottom:6px">Type a single key or a modifier combination (e.g., Ctrl+M, Alt+V). Leave blank for no binding.</div>
+    <div class="settings-row" style="align-items:center;">
+      <div style="flex:1">
+        <label style="font-size:13px; color:var(--muted); display:block; margin-bottom:6px;">Toggle Camera</label>
+        <input id="keybindToggleCam" type="text" placeholder="e.g., v or Ctrl+V" style="width:100%; padding:8px; border-radius:8px; border:1px solid #e6e9f2" />
+      </div>
+    </div>
+    <div class="settings-row" style="align-items:center;">
+      <div style="flex:1">
+        <label style="font-size:13px; color:var(--muted); display:block; margin-bottom:6px;">Toggle Mute</label>
+        <input id="keybindToggleMic" type="text" placeholder="e.g., m or Ctrl+M" style="width:100%; padding:8px; border-radius:8px; border:1px solid #e6e9f2" />
+      </div>
+    </div>
+    <div style="font-size:12px; color:var(--muted); margin-top:6px">When customizing keybinds, click the field and press the desired key combination. Press Backspace to clear.</div>
+
+    <div class="settings-actions">
+      <button id="resetThemeBtn" class="ghost">Reset</button>
+      <button id="saveThemeBtn" class="small-btn">Save</button>
+    </div>
+
+    <div class="settings-note">Settings are stored locally in your browser and applied immediately.</div>
+  </div>
+
+  <script>
+    // State and elements
+    let peer = null;
+    let localStream = null;
+    const conns = new Map();
+    const calls = new Map();
+    const knownPeers = new Set();
+    const groups = {};
+    const myGroups = new Set();
+    let currentGroup = 'general';
+
+    // unread counts
+    const unreadGroups = {}; // groupName -> count
+    const unreadDMs = {};    // peerId -> count
+
+    const groupListEl = document.getElementById('groupList');
+    const messagesEl = document.getElementById('messages');
+    const miniLog = document.getElementById('miniLog');
+    const videoGrid = document.getElementById('videoGrid');
+    const membersListEl = document.getElementById('membersList');
+    const dmDropdown = document.getElementById('dmDropdown');
+    const localVideo = document.getElementById('localVideo');
+    const joinCurrentCallBtn = document.getElementById('joinCurrentCallBtn');
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    const callGroupBtnMain = document.getElementById('callGroupBtnMain');
+    const everyoneOverlay = document.getElementById('everyoneOverlay');
+    const everyoneGrid = document.getElementById('everyoneGrid');
+    const closeEveryoneOverlay = document.getElementById('closeEveryoneOverlay');
+    const leaveAllBtnRight = document.getElementById('leaveAllBtnRight');
+    const localPreview = document.getElementById('localPreview');
+    const autoConnectCheckbox = document.getElementById('autoConnectCheckbox');
+    const autoConnectStatus = document.getElementById('autoConnectStatus');
+
+    // settings UI elements
+    const settingsBtn = document.getElementById('settingsBtn');
+    const settingsModal = document.getElementById('settingsModal');
+    const avatarFile = document.getElementById('avatarFile');
+    const previewAvatar = document.getElementById('previewAvatar');
+    const previewNameText = document.getElementById('previewNameText');
+    const avatarPresets = document.getElementById('avatarPresets');
+    const clearAvatarBtn = document.getElementById('clearAvatarBtn');
+
+    const colorPageBg = document.getElementById('colorPageBg');
+    const colorCardBg = document.getElementById('colorCardBg');
+    const colorAccent = document.getElementById('colorAccent');
+    const colorAccent2 = document.getElementById('colorAccent2');
+    const colorName = document.getElementById('colorName');
+    const saveThemeBtn = document.getElementById('saveThemeBtn');
+    const resetThemeBtn = document.getElementById('resetThemeBtn');
+
+    const localControls = document.getElementById('localControls');
+    const toggleCamBtn = document.getElementById('toggleCamBtn');
+    const toggleMuteBtn = document.getElementById('toggleMuteBtn');
+    const hangupBtn = document.getElementById('hangupBtn');
+
+    // message storage and DM handling
+    const allMessages = []; // { sender, text, group (null for DMs), time, _dmTo }
+    function log(...args){ const line = '['+new Date().toLocaleTimeString()+'] '+ args.map(a=> typeof a==='string' ? a : JSON.stringify(a)).join(' '); miniLog.innerText = line + '\n' + miniLog.innerText; console.log(...args); }
+    function makeId(){ return Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8); }
+
+    // safe id helper for DOM element ids derived from peer IDs
+    function makeSafeId(prefix, id){
+      if(!id) return prefix + 'unknown';
+      // encodeURIComponent then normalize percent signs to underscores for a valid id
+      return prefix + encodeURIComponent(id).replace(/%/g, '_');
+    }
+
+    // media control state
+    let camEnabled = true;
+    let micEnabled = true;
+
+    // Screen-share state
+let screenStream = null;
+let isSharingScreen = false;
+const shareScreenBtn = document.getElementById('shareScreenBtn');
+
+// Replace outgoing video tracks on existing PeerJS media connections
+async function replaceOutgoingVideoTrack(newTrack){
+  for(const [pid, mc] of calls){
+    try{
+      const pc = mc && mc.peerConnection;
+      if(!pc) continue;
+      const senders = pc.getSenders ? pc.getSenders() : [];
+      const videoSender = senders.find(s => s && s.track && s.track.kind === 'video');
+      if(videoSender && typeof videoSender.replaceTrack === 'function'){
+        await videoSender.replaceTrack(newTrack);
+      } else {
+        try{ pc.addTrack(newTrack, screenStream || localStream); }catch(e){}
+      }
+    }catch(e){
+      log('replaceOutgoingVideoTrack error for', pid, e && e.message);
+    }
+  }
+}
+
+// Helper to restore camera track to outgoing senders
+async function restoreCameraTrack(){
+  if(!localStream){
+    try{ await ensureLocalStream(); }catch(e){ log('restoreCameraTrack: cannot get camera', e && e.message); return; }
+  }
+  const camTrack = localStream && localStream.getVideoTracks()[0];
+  if(!camTrack) return;
+  await replaceOutgoingVideoTrack(camTrack);
+}
+
+
+    // settings storage and helpers
+    const SETTINGS_KEY = 'geoweb_settings_v1';
+    const AVATAR_KEY = 'geoweb_avatars_v1';
+
+    const defaultSettings = {
+      pageBg: '#f4f6fb',
+      cardBg: '#ffffff',
+      accent: '#3b82f6',
+      accent2: '#6366f1',
+      nameColor: '#0f172a',
+      username: '',
+      keybindToggleCam: '',
+      keybindToggleMic: ''
+    };
+
+    function loadAvatars(){
+      try{
+        const raw = localStorage.getItem(AVATAR_KEY);
+        if(!raw) return {};
+        return JSON.parse(raw);
+      }catch(e){ return {}; }
+    }
+    function saveAvatars(map){
+      try{ localStorage.setItem(AVATAR_KEY, JSON.stringify(map)); }catch(e){}
+    }
+
+    let avatars = loadAvatars();
+
+    function loadSettings(){
+      try{
+        const raw = localStorage.getItem(SETTINGS_KEY);
+        if(!raw) return Object.assign({}, defaultSettings);
+        return Object.assign({}, defaultSettings, JSON.parse(raw));
+      }catch(e){ return Object.assign({}, defaultSettings); }
+    }
+    function saveSettings(s){
+      try{ localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); }catch(e){}
+    }
+    let settings = loadSettings();
+
+    function applyTheme(s){
+      if(!s) s = settings;
+      document.documentElement.style.setProperty('--page-bg', s.pageBg || defaultSettings.pageBg);
+      document.documentElement.style.setProperty('--card-bg', s.cardBg || defaultSettings.cardBg);
+      document.documentElement.style.setProperty('--accent', s.accent || defaultSettings.accent);
+      document.documentElement.style.setProperty('--accent-2', s.accent2 || defaultSettings.accent2);
+      document.documentElement.style.setProperty('--name-color', s.nameColor || defaultSettings.nameColor);
+      previewNameText.textContent = s.username || (document.getElementById('username').value || 'Me');
+      previewAvatar.innerHTML = '';
+      const un = s.username || (document.getElementById('username').value || '');
+      if(un && avatars[un]){
+        const av = avatars[un];
+        if(av.type === 'image'){
+          const img = document.createElement('img'); img.src = av.value; img.alt = un;
+          previewAvatar.appendChild(img);
+        } else {
+          previewAvatar.textContent = av.value;
+        }
+      } else {
+        previewAvatar.textContent = (s.username && s.username[0]) || '👤';
+      }
+    }
+
+    applyTheme(settings);
+
+    function avatarFor(name){
+      if(!name) return '👤';
+      if(avatars[name]){
+        const av = avatars[name];
+        if(av.type === 'image') return av;
+        return av.value;
+      }
+      return name[0] || '👤';
+    }
+
+    // Presence / avatar propagation helpers
+    function localPresencePayload(){
+      const name = document.getElementById('username').value || settings.username || '';
+      const avatar = avatars[name] || null; // { type:'image'|'emoji', value:... } or null
+      return { type: 'presence', payload: { name, avatar } };
+    }
+    function sendPresenceToConn(conn){
+      if(!conn || !conn.open) return;
+      try{ conn.send(localPresencePayload()); }catch(e){ log('presence send failed', e && e.message); }
+    }
+    function broadcastPresence(){
+      const payload = localPresencePayload();
+      for(const [pid,c] of conns){
+        try{ if(c && c.open) c.send(payload); }catch(e){ log('broadcast presence fail', pid, e && e.message); }
+      }
+    }
+    function handleRemotePresence(fromPeerId, presencePayload){
+      if(!presencePayload) return;
+      const name = (presencePayload.name && presencePayload.name.length) ? presencePayload.name : fromPeerId;
+      if(presencePayload.avatar){
+        avatars[name] = presencePayload.avatar;
+        saveAvatars(avatars);
+        renderMembersPanel();
+        updateDmDropdown();
+        updateGroupBadges();
+      }
+      knownPeers.add(name);
+    }
+
+    // incoming call modal
+    const incomingCalls = new Map();
+    const incomingModal = document.getElementById('incomingCallModal');
+    const incomingCallFrom = document.getElementById('incomingCallFrom');
+    const acceptCallBtn = document.getElementById('acceptCallBtn');
+    const declineCallBtn = document.getElementById('declineCallBtn');
+
+    function appendMessageToDOM(m){
+      const wrapper = document.createElement('div'); wrapper.className='message';
+      const av = document.createElement('div'); av.className='avatar';
+      const avData = avatarFor(m.sender);
+      if(typeof avData === 'object' && avData.type === 'image'){
+        const img = document.createElement('img'); img.src = avData.value; img.alt = m.sender;
+        av.appendChild(img);
+      } else {
+        av.textContent = avData;
+      }
+
+      const bubble = document.createElement('div'); bubble.className='bubble';
+      const meta = document.createElement('div'); meta.className='meta'; meta.textContent = m.sender + (m.group ? ' ['+m.group+']' : '');
+      meta.style.color = getComputedStyle(document.documentElement).getPropertyValue('--name-color').trim() || settings.nameColor || '#0f172a';
+      const body = document.createElement('div'); body.className='body'; body.textContent = m.text;
+      bubble.appendChild(meta); bubble.appendChild(body);
+      wrapper.appendChild(av); wrapper.appendChild(bubble);
+      messagesEl.appendChild(wrapper);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function incrementGroupUnread(group){
+      unreadGroups[group] = (unreadGroups[group] || 0) + 1;
+      updateGroupBadges();
+    }
+    function clearGroupUnread(group){
+      unreadGroups[group] = 0;
+      updateGroupBadges();
+    }
+    function incrementDMUnread(peerId){
+      unreadDMs[peerId] = (unreadDMs[peerId] || 0) + 1;
+      updateDmDropdown(); updateMemberBadges();
+    }
+    function clearDMUnread(peerId){
+      unreadDMs[peerId] = 0;
+      updateDmDropdown(); updateMemberBadges();
+    }
+
+    function showMessage(sender, text, extra){
+      const msg = { sender, text, group: extra && extra.group ? extra.group : null, time: new Date().toLocaleTimeString() };
+      allMessages.push(msg);
+      if(allMessages.length > 5000) allMessages.splice(0, allMessages.length - 5000);
+
+      if(msg.group){
+        if(msg.group === currentGroup){
+          appendMessageToDOM(msg);
+        } else {
+          incrementGroupUnread(msg.group);
+        }
+      } else {
+        const dmKey = sender;
+        if(currentGroup === ('dm:'+dmKey)){
+          appendMessageToDOM(msg);
+        } else {
+          incrementDMUnread(dmKey);
+        }
+      }
+    }
+
+    function renderMessagesForCurrentGroup(){
+      messagesEl.innerHTML = '';
+      if(currentGroup.startsWith('dm:')){
+        const dmPeer = currentGroup.split(':')[1];
+        if(dmPeer) clearDMUnread(dmPeer);
+        for(const m of allMessages){
+          if(m.group === null && (m.sender === dmPeer)) {
+            appendMessageToDOM(m);
+          }
+        }
+        for(const m of allMessages){
+          if(m.group === null && m.sender === (document.getElementById('username').value || 'Me')) {
+            if(m._dmTo === dmPeer) appendMessageToDOM(m);
+          }
+        }
+      } else {
+        if(currentGroup) clearGroupUnread(currentGroup);
+        for(const m of allMessages) if(m.group && m.group === currentGroup) appendMessageToDOM(m);
+      }
+    }
+
+    // persistence/helpers for groups
+    function persistGroups(){ try{ const out={}; for(const g in groups) out[g]=Array.from(groups[g]); localStorage.setItem('groupRegistry', JSON.stringify(out)); }catch(e){ log('persist failed', e && e.message); } }
+    function loadGroups(){ try{ const raw = localStorage.getItem('groupRegistry'); if(!raw) return; const obj = JSON.parse(raw); for(const g in obj) groups[g]=new Set(obj[g]); }catch(e){ log('load failed', e && e.message); } }
+
+    function updateGroupBadges(){
+      document.querySelectorAll('.group-row').forEach(row=>{
+        const g = row.dataset.group;
+        let badge = row.querySelector('.badge');
+        const count = unreadGroups[g] || 0;
+        if(count > 0){
+          if(!badge){
+            badge = document.createElement('span'); badge.className='badge';
+            row.insertBefore(badge, row.lastChild);
+          }
+          badge.textContent = count > 99 ? '99+' : count;
+        } else {
+          if(badge) badge.remove();
+        }
+      });
+      saveUnreadToStorage();
+    }
+
+    function updateMemberBadges(){
+      document.querySelectorAll('.member-row').forEach(row=>{
+        const memName = row.dataset.member;
+        const containerLeft = row.querySelector('[data-member-left]');
+        const existing = containerLeft && containerLeft.querySelector('.member-bubble');
+        const count = unreadDMs[memName] || 0;
+        if(count > 0){
+          if(!existing){
+            const b = document.createElement('span'); b.className = 'member-bubble'; b.textContent = count>99?'99+':count;
+            containerLeft.appendChild(b);
+          } else {
+            existing.textContent = count>99?'99+':count;
+          }
+        } else {
+          if(existing) existing.remove();
+        }
+      });
+      saveUnreadToStorage();
+    }
+
+    function renderGroups(){
+      groupListEl.innerHTML='';
+      if(!groups['general']) groups['general']=new Set();
+      Object.keys(groups).sort().forEach(g=>{
+        const row=document.createElement('div'); row.className='group-row'; row.dataset.group=g;
+        if(g===currentGroup) row.classList.add('selected');
+        const left=document.createElement('div'); left.textContent = g+' ('+(groups[g].size||0)+')';
+        const btn=document.createElement('button'); btn.textContent = myGroups.has(g) ? 'Leave' : 'Join';
+        btn.onclick=(e)=>{ e.stopPropagation(); const me=document.getElementById('username').value||''; if(!me){ alert('Set username first'); return; } if(myGroups.has(g)){ groups[g].delete(me); myGroups.delete(g); } else { groups[g].add(me); myGroups.add(g); } persistGroups(); renderGroups(); broadcastGroupUpdate(g); };
+        row.appendChild(left); row.appendChild(btn);
+        row.onclick=()=>{ currentGroup=g; document.getElementById('currentRoomTitle').textContent='# '+g; renderGroups(); renderMembersPanel(); updateJoinButtonVisibility(); renderMessagesForCurrentGroup(); };
+        groupListEl.appendChild(row);
+      });
+      updateGroupBadges();
+    }
+
+    function broadcastObject(obj){ for(const [pid,c] of conns){ try{ if(c && c.open) c.send(obj); }catch(e){ log('broadcast fail', e && e.message); } } }
+    function broadcastGroupUpdate(g){ const members = Array.from(groups[g]||[]); const payload = { type:'group:update', payload:{ group:g, members }, sender: document.getElementById('username').value||'', time: Date.now() }; broadcastObject(payload); log('group:update', g, members); }
+
+    function updateDmDropdown(){ const cur = dmDropdown.value; dmDropdown.innerHTML = '<option value="">-- select peer --</option>'; Array.from(knownPeers).sort().forEach(p=>{ if(!p) return; const o=document.createElement('option'); const count = unreadDMs[p] || 0; o.value=p; o.textContent = p + (count>0 ? ' ('+ (count>99 ? '99+' : count) +')' : ''); dmDropdown.appendChild(o); }); if(cur) dmDropdown.value = cur; }
+
+    async function ensureLocalStream(){ if(localStream) return localStream; try{ localStream = await navigator.mediaDevices.getUserMedia({video:true,audio:true}); localVideo.srcObject = localStream; // set initial track enabled states
+        camEnabled = !!(localStream.getVideoTracks().length && localStream.getVideoTracks().some(t=>t.enabled));
+        micEnabled = !!(localStream.getAudioTracks().length && localStream.getAudioTracks().some(t=>t.enabled));
+        updateMediaControlButtons();
+        return localStream; }catch(e){ log('getUserMedia failed', e && e.message); throw e; } }
+
+    function showVideoArea(){ videoGrid.style.display = 'grid'; localPreview.style.display = 'block'; localControls.style.display = 'flex'; ensureFsForCardForAll(); }
+    function hideVideoArea(){ videoGrid.style.display = 'none'; localPreview.style.display = 'none'; localControls.style.display = 'none'; }
+
+    // Update UI for media control buttons
+    function updateMediaControlButtons(){
+      if(toggleCamBtn){
+        toggleCamBtn.textContent = camEnabled ? '📷' : '🚫';
+        toggleCamBtn.classList.toggle('cam-off', !camEnabled);
+      }
+      if(toggleMuteBtn){
+        toggleMuteBtn.textContent = micEnabled ? '🎙️' : '🔇';
+        toggleMuteBtn.classList.toggle('muted', !micEnabled);
+      }
+    }
+// Manual peer connection logic
+document.getElementById('manualConnectBtn').addEventListener('click', ()=>{
+  const peerId = document.getElementById('manualPeerId').value.trim();
+  if(!peerId){
+    alert('Enter a peer ID to connect.');
+    return;
+  }
+  if(!peer){
+    alert('Peer connection not initialized yet.');
+    return;
+  }
+  if(conns.has(peerId)){
+    alert('Already connected to this peer.');
+    return;
+  }
+  try{
+    const c = peer.connect(peerId, {reliable:true});
+    registerConnHandlers(c);
+    log('Manually connected to', peerId);
+    // Optionally add to knownPeers to keep track
+    knownPeers.add(peerId);
+    updateDmDropdown();
+  }catch(e){
+    alert('Failed to connect: ' + (e && e.message));
+  }
+});
+
+    // Data connection handling
+    function registerConnHandlers(conn){
+      if(!conn) return;
+      conn.on('open', ()=>{
+        const pid = conn && conn.peer;
+        log('data open to', pid || '(unknown)');
+        if(pid){
+          conns.set(pid, conn);
+          knownPeers.add(pid);
+          updateDmDropdown();
+        }
+        try{ conn.send({ type:'who:groups', requester: document.getElementById('username').value || '' }); }catch(e){}
+        // send our presence immediately on open
+        try{ sendPresenceToConn(conn); }catch(e){}
+      });
+      conn.on('data', raw=>{
+        log('data recv', conn && conn.peer, raw);
+        let parsed = raw;
+
+        // --- FILE RECEIVE: handle incoming file payloads ---
+        if(parsed && parsed.type === 'file'){
+            try{
+                const name = parsed.filename || parsed.name || 'file';
+                const dataUrl = parsed.dataUrl || parsed.data || '';
+                const from = parsed.from || conn.peer || 'Unknown';
+                const link = '<a href="' + dataUrl + '" download="' + name + '" style="font-weight:700;color:var(--accent)">' + name + '</a>';
+
+                // mini log
+                const mini = document.getElementById('miniLog');
+                if(mini) mini.innerHTML = link + '<br>' + mini.innerHTML;
+
+                // main messages area
+                const msgs = document.getElementById('messages');
+                if(msgs){
+                    const wrap = document.createElement('div');
+                    wrap.className = 'message';
+                    wrap.innerHTML = '<div class="avatar">📄</div>'
+                                   + '<div class="bubble"><div class="meta">' + from + '</div>'
+                                   + '<div class="body">' + link + '</div></div>';
+                    msgs.appendChild(wrap);
+                    msgs.scrollTop = msgs.scrollHeight;
+                }
+            }catch(e){ console.warn('file receive handler error', e); }
+            return;
+        }
+        if(typeof raw === 'string') try{ parsed = JSON.parse(raw); }catch(e){}
+        if(parsed && parsed.type==='who:groups'){ const list = Object.keys(groups); try{ conn.send({ type:'reply:groups', responder: document.getElementById('username').value||'', groups:list }); }catch(e){} return; }
+        if(parsed && parsed.type==='reply:groups'){ (parsed.groups||[]).forEach(g=>{ if(!groups[g]) groups[g]=new Set(); }); persistGroups(); renderGroups(); return; }
+        if(parsed && parsed.type==='group:update'){ const pl = parsed.payload||{}; if(pl.group){ groups[pl.group]=new Set(pl.members||[]); const me=document.getElementById('username').value; if(me && pl.members.includes(me)) myGroups.add(pl.group); persistGroups(); renderGroups(); renderMembersPanel(); } return; }
+        if(parsed && parsed.type==='group:message'){ const pl=parsed.payload||{}; if(pl && pl.group && groups[pl.group] && groups[pl.group].has(document.getElementById('username').value||'')){ showMessage(pl.sender||'Unknown', pl.text||'', {group:pl.group}); } return; }
+        if(parsed && parsed.type === 'presence'){ const from = (parsed.payload && parsed.payload.name) || conn.peer; handleRemotePresence(from, parsed.payload); return;
+
+        
+ }
+// DM-style payload: has 'to' field
+        if(parsed && parsed.to){
+          const me=document.getElementById('username').value;
+          if(parsed.to===me){
+            const sender = parsed.sender || conn && conn.peer || 'Unknown';
+            const text = parsed.originalText || parsed.text || '';
+            const msg = { sender, text, group: null, time: new Date().toLocaleTimeString(), _dmTo: me };
+            allMessages.push(msg);
+            if(currentGroup === ('dm:'+sender)) appendMessageToDOM(msg);
+            else incrementDMUnread(sender);
+            return;
+          } else {
+            // prevent forwarding loops: use a simple hop counter
+            parsed._hops = (parsed._hops || 0) + 1;
+            if(parsed._hops > 2) return;
+            for(const [pid,c] of conns) if(c && c.open) try{ c.send(parsed); }catch(e){}
+            return;
+          }
+        }
+        showMessage((parsed && parsed.sender) || 'Unknown', (parsed && (parsed.text||parsed.originalText))||'');
+      });
+      conn.on('close', ()=>{ if(conn && conn.peer){ conns.delete(conn.peer); knownPeers.delete(conn.peer); updateDmDropdown(); renderMembersPanel(); } });
+      conn.on('error', err=> log('data error', err && err.message));
+    }
+
+    function registerCallHandler(mediaConn){
+      if(!mediaConn) return;
+      const pid = mediaConn.peer;
+      calls.set(pid, mediaConn);
+      updateLeaveAllState();
+      mediaConn.on('stream', stream => { log('remote stream from', pid); attachRemoteStream(pid, stream); });
+      mediaConn.on('close', ()=>{ log('call closed by', pid); detachRemoteStream(pid); calls.delete(pid); updateLeaveAllState(); if(calls.size===0) hideVideoArea(); });
+      mediaConn.on('error', err=>{ log('call error', pid, err && err.message); detachRemoteStream(pid); calls.delete(pid); updateLeaveAllState(); if(calls.size===0) hideVideoArea(); });
+    }
+
+    function attachRemoteStream(peerId, stream){
+      showVideoArea();
+      let card = document.getElementById(makeSafeId('video-card-', peerId));
+      if(!card){
+        const safeId = makeSafeId('video-card-', peerId);
+        card = document.createElement('div'); card.className='videoCard'; card.id = safeId;
+        const label = document.createElement('div'); label.className='videoLabel'; label.textContent = peerId; label.style.position='absolute'; label.style.left='8px'; label.style.top='8px';
+        card.appendChild(label);
+
+        const actions = document.createElement('div'); actions.className='videoActions';
+        const hang = document.createElement('button'); hang.title='Hang up'; hang.textContent='⏹'; hang.style.padding='6px'; hang.onclick=()=> leaveCall(peerId);
+        actions.appendChild(hang);
+        card.appendChild(actions);
+
+        const inner = document.createElement('div'); inner.className='videoCardInner';
+        const vid = document.createElement('video'); vid.autoplay=true; vid.playsInline=true; vid.id='video-'+peerId;
+        inner.appendChild(vid); card.appendChild(inner);
+
+        const footer = document.createElement('div'); footer.className='videoFooter'; footer.textContent='Remote: '+peerId;
+        videoGrid.appendChild(card);
+      }
+      const vidEl = document.getElementById('video-'+peerId);
+      try{ vidEl.srcObject = stream; }catch(e){ log('attach stream failed', e && e.message); }
+      ensureFsForCard(card);
+      updateLeaveAllState();
+    }
+
+    function detachRemoteStream(peerId){
+      const card = document.getElementById(makeSafeId('video-card-', peerId));
+      if(card){ try{ const v = card.querySelector('video'); if(v) v.srcObject=null; card.remove(); }catch(e){ log('detach error', e && e.message); } }
+    }
+
+    function leaveCall(peerId){
+      const mc = calls.get(peerId);
+      if(mc){ try{ mc.close(); }catch(e){ log('close call error', e && e.message); } }
+      detachRemoteStream(peerId);
+      calls.delete(peerId);
+      updateLeaveAllState();
+      if(calls.size===0) hideVideoArea();
+      log('left call with', peerId);
+    }
+
+    function updateLeaveAllState(){ leaveAllBtnRight.disabled = calls.size === 0; }
+
+    function callPeerOutgoing(peerId){
+      if(!peer) return null;
+      const existing = calls.get(peerId);
+      if(existing && existing.open) return existing;
+      try{
+        ensureLocalStream().then(()=>{ showVideoArea(); }).catch(()=>{});
+        const mc = peer.call(peerId, localStream);
+registerCallHandler(mc);
+
+// ensure new call uses current outgoing track (screen or camera)
+(async ()=>{
+  try{
+    const activeTrack = (isSharingScreen && screenStream && screenStream.getVideoTracks()[0]) || (localStream && localStream.getVideoTracks()[0]);
+    if(activeTrack && mc && mc.peerConnection){
+      const pc = mc.peerConnection;
+      const senders = pc.getSenders ? pc.getSenders() : [];
+      const videoSender = senders.find(s => s && s.track && s.track.kind === 'video');
+      if(videoSender && typeof videoSender.replaceTrack === 'function'){
+        await videoSender.replaceTrack(activeTrack);
+      }
+    }
+  }catch(e){ log('callPeerOutgoing replace track failed', e && e.message); }
+})();
+
+return mc;
+
+      }catch(e){ log('outgoing call failed to', peerId, e && e.message); return null; }
+    }
+
+    async function callGroup(groupName){
+      if(!groups[groupName]){ alert('Unknown group'); return; }
+      await ensureLocalStream();
+      showVideoArea();
+      const me=document.getElementById('username').value||'';
+      const members=Array.from(groups[groupName]);
+      let any=false;
+      for(const member of members){
+        if(member===me) continue;
+        if(!conns.has(member)){ try{ const conn=peer.connect(member,{ reliable:true }); registerConnHandlers(conn); }catch(e){ log('connect for call failed', member); } }
+        const mc = callPeerOutgoing(member);
+        if(mc) any=true;
+        await new Promise(r=>setTimeout(r,120));
+      }
+      if(any){ log('initiated calls to group', groupName); } else alert('No reachable members to call in group');
+    }
+
+    async function joinCurrentGroupCall(){
+      if(!currentGroup) return;
+      if(currentGroup.startsWith('dm:')){ alert('Join call only for groups'); return; }
+      const groupKey = currentGroup;
+      if(!groups[groupKey] || groups[groupKey].size===0){ alert('No group members'); return; }
+      await ensureLocalStream();
+      showVideoArea();
+      const me=document.getElementById('username').value||'';
+      const members=Array.from(groups[groupKey]);
+      let any=false;
+      for(const m of members){
+        if(m===me) continue;
+        if(!conns.has(m)){ try{ const conn=peer.connect(m,{ reliable:true }); registerConnHandlers(conn); }catch(e){ log('connect failed to', m); } }
+        const mc = callPeerOutgoing(m);
+        if(mc) any=true;
+        await new Promise(r=>setTimeout(r,120));
+      }
+      if(any){ log('joined call for group', groupKey); }
+    }
+
+    // DM sending: store sent DM locally with _dmTo to render in DM view
+    function sendDM(to,text){
+      const me=document.getElementById('username').value||'Me';
+      const payload={ messageId:makeId(), sender:me, originalText:text, time:new Date().toLocaleTimeString(), to };
+      let c=conns.get(to);
+      if(!c || !c.open){ try{ c=peer.connect(to,{ reliable:true }); registerConnHandlers(c); }catch(e){ log('connect DM failed', e && e.message); c=null; } }
+      if(c && c.open) try{ c.send(payload); }catch(e){ log('dm send failed', e && e.message); }
+      const msg = { sender: me, text, group: null, time: new Date().toLocaleTimeString(), _dmTo: to };
+      allMessages.push(msg);
+      if(currentGroup === ('dm:'+to)) appendMessageToDOM(msg);
+    }
+
+    function sendGroupMessage(groupName,text){
+      const me=document.getElementById('username').value||'Me';
+      if(!groups[groupName]){ alert('Unknown group'); return; }
+      const members=Array.from(groups[groupName]);
+      const payload={ type:'group:message', payload:{ group:groupName, messageId:makeId(), sender:me, text, time:new Date().toLocaleTimeString() } };
+      for(const member of members){
+        if(member===me) continue;
+        let c=conns.get(member);
+        if(!c || !c.open){ try{ c=peer.connect(member,{ reliable:true }); registerConnHandlers(c); }catch(e){ log('connect sendGroup failed to', member); c=null; } }
+        if(c && c.open) try{ c.send(payload); }catch(e){ log('group send failed', e && e.message); }
+      }
+      broadcastObject(payload);
+      showMessage('Me', text, {group:groupName});
+    }
+
+    function renderMembersPanel(){
+      membersListEl.innerHTML='';
+      const g = currentGroup;
+      const list = groups[g] ? Array.from(groups[g]) : [];
+      const me = document.getElementById('username').value || '';
+      list.forEach(mem=>{
+        const row=document.createElement('div'); row.className='member-row';
+        row.dataset.member = mem;
+        if(mem === me){
+          const left=document.createElement('div'); left.textContent = 'You'; left.className = 'self-row'; left.setAttribute('data-member-left','1');
+          const right=document.createElement('div'); right.style.display='flex'; right.style.gap='6px';
+          const dmBtn=document.createElement('button'); dmBtn.textContent='DM'; dmBtn.disabled = true;
+          const callBtn=document.createElement('button'); callBtn.textContent='Call'; callBtn.disabled = true;
+          right.appendChild(dmBtn); right.appendChild(callBtn);
+          row.appendChild(left); row.appendChild(right);
+          membersListEl.appendChild(row);
+          return;
+        }
+
+        const left=document.createElement('div'); left.setAttribute('data-member-left','1');
+        const smallAv = document.createElement('span'); smallAv.style.display='inline-flex'; smallAv.style.alignItems='center'; smallAv.style.gap='8px';
+        const avBox = document.createElement('div'); avBox.className='avatar'; avBox.style.width = '28px'; avBox.style.height = '28px';
+        const avData = avatarFor(mem);
+        if(typeof avData === 'object' && avData.type === 'image'){ const img=document.createElement('img'); img.src = avData.value; avBox.appendChild(img); } else avBox.textContent = avData;
+        smallAv.appendChild(avBox);
+        const nameSpan = document.createElement('span'); nameSpan.textContent = mem; nameSpan.style.marginLeft='6px';
+        smallAv.appendChild(nameSpan);
+        left.appendChild(smallAv);
+
+        const right=document.createElement('div'); right.style.display='flex'; right.style.gap='6px';
+        const dmBtn=document.createElement('button'); dmBtn.textContent='DM'; dmBtn.onclick=(e)=>{ e.stopPropagation(); openDMWith(mem); };
+        const callBtn=document.createElement('button'); callBtn.textContent='Call'; callBtn.onclick=async(e)=>{ e.stopPropagation(); await callPeerOutgoing(mem); };
+        right.appendChild(dmBtn); right.appendChild(callBtn);
+        row.appendChild(left); row.appendChild(right);
+        row.onclick = () => openDMWith(mem);
+        membersListEl.appendChild(row);
+      });
+      updateMemberBadges();
+    }
+
+    function openDMWith(peerId){
+      if(!peerId) return;
+      // clear unread early
+      clearDMUnread(peerId);
+      currentGroup = 'dm:' + peerId;
+      document.getElementById('currentRoomTitle').textContent = '@ ' + peerId;
+      renderGroups(); renderMembersPanel(); updateJoinButtonVisibility(); renderMessagesForCurrentGroup();
+      try{ dmDropdown.value = peerId; }catch(e){}
+    }
+
+    // Everyone together overlay
+    function showEveryoneTogether(){
+      everyoneGrid.innerHTML='';
+      const vids=[];
+      document.querySelectorAll('#videoGrid video').forEach(v=>{ if(v.srcObject||v.currentSrc) vids.push({el:v,label:v.id.replace('video-','')}); });
+      const local=document.getElementById('localVideo');
+      if(local&&(local.srcObject||local.currentSrc)) vids.unshift({el:local,label:'You'});
+      if(vids.length===0){ alert('No active videos'); return; }
+      const cols=Math.ceil(Math.sqrt(vids.length));
+      everyoneGrid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+      vids.forEach(vobj=>{
+        const container=document.createElement('div'); container.style.position='relative'; container.style.background='#000'; container.style.borderRadius='8px'; container.style.overflow='hidden';
+        const label=document.createElement('div'); label.textContent=vobj.label; label.style.position='absolute'; label.style.left='8px'; label.style.top='8px'; label.style.zIndex='4'; label.style.padding='6px 8px'; label.style.background='rgba(0,0,0,0.35)'; label.style.color='#fff'; label.style.fontWeight='700';
+        const cloneVid=document.createElement('video'); cloneVid.autoplay=true; cloneVid.playsInline=true; cloneVid.muted=false; cloneVid.style.width='100%'; cloneVid.style.height='100%'; cloneVid.style.objectFit='cover';
+        try{ if(vobj.el.srcObject) cloneVid.srcObject = vobj.el.srcObject; else if(vobj.el.currentSrc) cloneVid.src = vobj.el.currentSrc; }catch(e){ log('overlay attach failed', e && e.message); }
+        container.appendChild(cloneVid); container.appendChild(label); everyoneGrid.appendChild(container);
+      });
+      everyoneOverlay.style.display='flex';
+    }
+    function closeEveryoneTogether(){ everyoneOverlay.style.display='none'; everyoneGrid.innerHTML=''; }
+
+    function ensureFsForCard(card){
+      if(!card) return;
+      if(card.querySelector('.fs-btn')) return;
+      const fs = document.createElement('button'); fs.className='fs-btn'; fs.title='Fullscreen'; fs.innerHTML='⤢'; fs.style.padding='6px';
+      fs.addEventListener('click',(e)=>{ e.stopPropagation(); const vid=card.querySelector('video'); if(vid && vid.requestFullscreen) vid.requestFullscreen(); });
+      const actions = card.querySelector('.videoActions');
+      if(actions) actions.insertBefore(fs, actions.firstChild);
+    }
+    function ensureFsForCardForAll(){
+      document.querySelectorAll('.videoCard').forEach(c=>ensureFsForCard(c));
+      const lp = localPreview;
+      if(lp && lp.style.display !== 'none' && !lp.querySelector('.fs-btn')){
+        const btn = document.createElement('button'); btn.className='fs-btn'; btn.title='Fullscreen Local'; btn.innerHTML='⤢';
+        btn.addEventListener('click', ()=>{ if(localVideo && localVideo.requestFullscreen) localVideo.requestFullscreen(); });
+        lp.appendChild(btn);
+      }
+    }
+
+    // Broadcast / discovery / auto-connect helpers
+    function setAutoConnectEnabled(enabled){ try{ localStorage.setItem('geoweb_auto_connect', enabled ? '1' : '0'); }catch(e){} autoConnectCheckbox.checked = !!enabled; autoConnectStatus.textContent = enabled ? '(on)' : '(off)'; }
+    function isAutoConnectEnabled(){ try{ return localStorage.getItem('geoweb_auto_connect') === '1'; }catch(e){ return false; } }
+    function tryAutoConnectToPeer(peerId){ if(!peerId||!peer) return; const me=document.getElementById('username').value||''; if(!isAutoConnectEnabled()) return; if(peerId===me) return; if(conns.has(peerId)) return; try{ const c=peer.connect(peerId,{ reliable:true }); registerConnHandlers(c); log('auto-connecting to', peerId); }catch(e){ log('auto-connect failed to', peerId, e && e.message); } }
+
+    const BC_NAME = 'geowebchat-local-peers-v1';
+    function ensureBroadcastChannel(){ if(typeof BroadcastChannel==='undefined') return null; if(window._geoweb_bc) return window._geoweb_bc; try{ const bc=new BroadcastChannel(BC_NAME); bc.onmessage = ev => {
+        const m = ev.data;
+        if(!m||!m.type) return;
+        if(m.type!=='peer:announce' && m.type!=='peer:remove') return;
+        const id = m.peerId;
+        if(!id) return;
+        const myId = document.getElementById('username').value || localStorage.getItem('peerUsername') || '';
+        if(id === myId) return; // ignore our own announces from other tabs
+        if(m.type==='peer:announce'){ knownPeers.add(id); updateDmDropdown(); tryAutoConnectToPeer(id); }
+        if(m.type==='peer:remove'){ knownPeers.delete(id); updateDmDropdown(); }
+      }; window._geoweb_bc = bc; return bc;}catch(e){ return null; } }
+    ensureBroadcastChannel();
+    function announceLocalPeer(id){ const bc = ensureBroadcastChannel(); if(!bc) return; bc.postMessage({ type:'peer:announce', peerId:id, ts: Date.now() }); }
+
+    // UI wiring
+    document.getElementById('createGroupLeft').addEventListener('click', ()=>{ const g=document.getElementById('newGroupNameLeft').value.trim(); const me=document.getElementById('username').value.trim(); if(!g){ alert('Enter group name'); return; } if(!me){ alert('Set username first'); return; } groups[g] = groups[g] || new Set(); groups[g].add(me); myGroups.add(g); persistGroups(); renderGroups(); broadcastGroupUpdate(g); document.getElementById('newGroupNameLeft').value=''; });
+
+    function handleIncomingCallPrompt(incoming){
+      const from = incoming.peer || 'Unknown';
+      incomingCalls.set(from, incoming);
+      incomingCallFrom.textContent = 'From: ' + from;
+      incomingModal.style.display = 'block';
+      incomingModal.setAttribute('aria-hidden','false');
+
+      const acceptHandler = async () => {
+        try{
+          await ensureLocalStream();
+          incoming.answer(localStream);
+          registerCallHandler(incoming);
+          showVideoArea();
+        }catch(e){ log('accept failed', e && e.message); }
+        cleanupIncomingUI(from);
+      };
+      const declineHandler = () => {
+        try{ if(incoming && incoming.close) incoming.close(); }catch(e){ }
+        cleanupIncomingUI(from);
+      };
+
+      acceptCallBtn.onclick = acceptHandler;
+      declineCallBtn.onclick = declineHandler;
+    }
+
+    function cleanupIncomingUI(from){
+      incomingCalls.delete(from);
+      incomingModal.style.display = 'none';
+      incomingModal.setAttribute('aria-hidden','true');
+      acceptCallBtn.onclick = null;
+      declineCallBtn.onclick = null;
+    }
+
+    document.getElementById('setNameBtn').addEventListener('click', ()=>{
+      const name = document.getElementById('username').value.trim();
+      if(!name){ alert('Type username'); return; }
+      localStorage.setItem('peerUsername', name);
+      settings.username = name;
+      saveSettings(settings);
+      applyTheme(settings);
+
+      // destroy previous peer if exists
+      if(peer && typeof peer.destroy === 'function'){ try{ peer.destroy(); }catch(e){} }
+
+      peer = new Peer(name);
+
+if (!window.conns) window.conns = new Map();
+
+peer.on("connection", conn => {
+    window.conns.set(conn.peer, conn);
+
+    conn.on("open", ()=>{
+        try { if (typeof sendPresenceToConn === 'function') sendPresenceToConn(conn); }catch(e){}
+    });
+
+    conn.on("close", ()=>{
+        window.conns.delete(conn.peer);
+    });
+
+    conn.on("error", ()=>{
+        window.conns.delete(conn.peer);
+    });
+});
+
+
+      peer.on('open', ()=> {
+        log('peer open', name);
+        announceLocalPeer(name);
+        knownPeers.add(name);
+        updateDmDropdown();
+        if(isAutoConnectEnabled()) knownPeers.forEach(k=>tryAutoConnectToPeer(k));
+        // give a short delay then broadcast presence
+        setTimeout(()=>{ try{ broadcastPresence(); }catch(e){} }, 300);
+      });
+
+      peer.on('connection', conn => registerConnHandlers(conn));
+      peer.on('call', incoming => { log('incoming call from', incoming.peer); handleIncomingCallPrompt(incoming); });
+      peer.on('error', err => log('peer error', err && err.message));
+
+      // warm local media (best-effort)
+      ensureLocalStream().then(()=>{ localVideo.srcObject = localStream; }).catch(e=>log('media error at setName', e && e.message));
+
+      // announce across other tabs (BC)
+      announceLocalPeer(name);
+
+      // try auto-connect once if enabled
+      if(isAutoConnectEnabled()) knownPeers.forEach(k=>tryAutoConnectToPeer(k));
+
+      currentGroup='general';
+      renderGroups();
+      renderMembersPanel();
+      updateJoinButtonVisibility();
+    });
+
+    document.getElementById('refreshPeersLeft').addEventListener('click', ()=> announceLocalPeer(document.getElementById('username').value || '') );
+    autoConnectCheckbox.checked = isAutoConnectEnabled(); autoConnectStatus.textContent = isAutoConnectEnabled() ? '(on)' : '(off)'; autoConnectCheckbox.addEventListener('change',(e)=>{ setAutoConnectEnabled(!!e.target.checked); if(e.target.checked && peer) knownPeers.forEach(k=>tryAutoConnectToPeer(k)); });
+
+    // DM dropdown change: open DM view
+    dmDropdown.addEventListener('change', ()=>{ const v=dmDropdown.value; if(v){ openDMWith(v); } });
+
+    document.getElementById('sendBtn').addEventListener('click', ()=>{ const txt=document.getElementById('text').value.trim(); if(!txt){ alert('Type a message'); return; } if(currentGroup && currentGroup.startsWith('dm:')){ const to=currentGroup.split(':')[1]; sendDM(to,txt); } else { if(!myGroups.size){ alert('You are not a member of any group. Join/create one first.'); return; } const groupToSend = (currentGroup && !currentGroup.startsWith('dm:') && myGroups.has(currentGroup)) ? currentGroup : Array.from(myGroups)[0]; sendGroupMessage(groupToSend,txt); } document.getElementById('text').value=''; });
+
+    document.getElementById('callGroupBtnMain').addEventListener('click', async ()=>{ if(currentGroup && currentGroup.startsWith('dm:')){ const peerId=currentGroup.split(':')[1]; if(!peerId){ alert('Select DM'); return; } await callPeerOutgoing(peerId); showVideoArea(); } else { const groupToCall = (currentGroup && myGroups.has(currentGroup)) ? currentGroup : Array.from(myGroups)[0]; if(!groupToCall){ alert('No group to call'); return; } await callGroup(groupToCall); }});
+    joinCurrentCallBtn.addEventListener('click', async ()=> joinCurrentGroupCall() );
+    fullscreenBtn.addEventListener('click', ()=>{
+      const videoEls = document.querySelectorAll('#videoGrid video');
+      let hasVideo = false;
+      videoEls.forEach(v=>{ if(v.srcObject || v.currentSrc) hasVideo = true; });
+      if(hasVideo){
+        showEveryoneTogether();
+      } else {
+        const el = document.getElementById('main');
+        if(el.requestFullscreen) el.requestFullscreen();
+      }
+    });
+
+    document.getElementById('closeEveryoneOverlay').addEventListener('click', closeEveryoneTogether);
+    document.getElementById('leaveAllBtnRight').addEventListener('click', ()=> { for(const pid of Array.from(calls.keys())) leaveCall(pid); });
+
+    function updateJoinButtonVisibility(){ const g = currentGroup.startsWith('dm:') ? null : currentGroup; if(g && groups[g] && groups[g].size>1) joinCurrentCallBtn.style.display='inline-block'; else joinCurrentCallBtn.style.display='none'; renderMembersPanel(); }
+
+    // Avatar presets
+    const presetEmojis = ['😀','😎','🧑‍💻','🚀','🐱','🐶','🦊','🐼','🧠','🎧','🌟','🔥'];
+    function renderAvatarPresets(){
+      avatarPresets.innerHTML = '';
+      for(const e of presetEmojis){
+        const node = document.createElement('div'); node.className='avatar-preset'; node.textContent = e;
+        node.addEventListener('click', ()=> {
+          const un = document.getElementById('username').value || settings.username || 'Me';
+          avatars[un] = { type: 'emoji', value: e };
+          saveAvatars(avatars);
+          previewAvatar.innerHTML = ''; previewAvatar.textContent = e;
+          applyTheme(settings);
+          // broadcast presence change
+          try{ broadcastPresence(); }catch(ex){ log('broadcast presence failed', ex && ex.message); }
+        });
+        avatarPresets.appendChild(node);
+      }
+    }
+    renderAvatarPresets();
+
+    avatarFile.addEventListener('change', (ev)=>{
+      const file = ev.target.files && ev.target.files[0];
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e){
+        const data = e.target.result;
+        const un = document.getElementById('username').value || settings.username || 'Me';
+        avatars[un] = { type: 'image', value: data };
+        saveAvatars(avatars);
+        previewAvatar.innerHTML = '';
+        const img = document.createElement('img'); img.src = data;
+        previewAvatar.appendChild(img);
+        // broadcast presence change
+        try{ broadcastPresence(); }catch(ex){ log('broadcast presence failed', ex && ex.message); }
+      };
+      reader.readAsDataURL(file);
+    });
+
+    clearAvatarBtn.addEventListener('click', ()=>{
+      const un = document.getElementById('username').value || settings.username || 'Me';
+      delete avatars[un];
+      saveAvatars(avatars);
+      previewAvatar.innerHTML = ''; previewAvatar.textContent = (un && un[0]) || '👤';
+      try{ broadcastPresence(); }catch(ex){ log('broadcast presence failed', ex && ex.message); }
+    });
+
+    // color inputs initialization
+    function initColorInputs(){
+      colorPageBg.value = settings.pageBg || defaultSettings.pageBg;
+      colorCardBg.value = settings.cardBg || defaultSettings.cardBg;
+      colorAccent.value = settings.accent || defaultSettings.accent;
+      colorAccent2.value = settings.accent2 || defaultSettings.accent2;
+      colorName.value = settings.nameColor || defaultSettings.nameColor;
+      previewNameText.textContent = settings.username || (document.getElementById('username').value || 'Me');
+
+      colorPageBg.addEventListener('input', (e)=>{ document.documentElement.style.setProperty('--page-bg', e.target.value); document.body.style.background = `linear-gradient(180deg, ${e.target.value} 0%, #eef4ff 100%)`; });
+      colorCardBg.addEventListener('input', (e)=>{ document.documentElement.style.setProperty('--card-bg', e.target.value); });
+      colorAccent.addEventListener('input', (e)=>{ document.documentElement.style.setProperty('--accent', e.target.value); });
+      colorAccent2.addEventListener('input', (e)=>{ document.documentElement.style.setProperty('--accent-2', e.target.value); });
+      colorName.addEventListener('input', (e)=>{ document.documentElement.style.setProperty('--name-color', e.target.value); });
+    }
+    initColorInputs();
+
+    settingsBtn.addEventListener('click', ()=>{
+      const visible = settingsModal.style.display === 'block';
+      if(visible) { settingsModal.style.display = 'none'; settingsModal.setAttribute('aria-hidden','true'); }
+      else {
+        settingsModal.style.display = 'block';
+        settingsModal.setAttribute('aria-hidden','false');
+        const un = document.getElementById('username').value || settings.username || 'Me';
+        previewNameText.textContent = un;
+        if(avatars[un]){
+          const av = avatars[un];
+          previewAvatar.innerHTML = '';
+          if(av.type === 'image'){ const img = document.createElement('img'); img.src = av.value; previewAvatar.appendChild(img); } else previewAvatar.textContent = av.value;
+        } else {
+          previewAvatar.innerHTML = '';
+          previewAvatar.textContent = (un && un[0]) || '👤';
+        }
+      }
+    });
+
+    saveThemeBtn.addEventListener('click', ()=>{
+      settings.pageBg = colorPageBg.value;
+      settings.cardBg = colorCardBg.value;
+      settings.accent = colorAccent.value;
+      settings.accent2 = colorAccent2.value;
+      settings.nameColor = colorName.value;
+      settings.username = document.getElementById('username').value || settings.username || '';
+      // save keybind fields as well
+      const camKb = document.getElementById('keybindToggleCam') ? document.getElementById('keybindToggleCam').value.trim() : (settings.keybindToggleCam||'');
+      const micKb = document.getElementById('keybindToggleMic') ? document.getElementById('keybindToggleMic').value.trim() : (settings.keybindToggleMic||'');
+      settings.keybindToggleCam = camKb;
+      settings.keybindToggleMic = micKb;
+      saveSettings(settings);
+      applyTheme(settings);
+      settingsModal.style.display = 'none';
+      settingsModal.setAttribute('aria-hidden','true');
+    });
+
+    resetThemeBtn.addEventListener('click', ()=>{
+      settings = Object.assign({}, defaultSettings);
+      saveSettings(settings);
+      applyTheme(settings);
+      initColorInputs();
+      initKeybindInputs();
+    });
+
+    // Unread persistence
+    function loadUnreadFromStorage(){
+      try{
+        const g = localStorage.getItem('geoweb_unread_groups_v1');
+        const d = localStorage.getItem('geoweb_unread_dms_v1');
+        if(g) Object.assign(unreadGroups, JSON.parse(g));
+        if(d) Object.assign(unreadDMs, JSON.parse(d));
+      }catch(e){}
+    }
+    function saveUnreadToStorage(){
+      try{
+        localStorage.setItem('geoweb_unread_groups_v1', JSON.stringify(unreadGroups));
+        localStorage.setItem('geoweb_unread_dms_v1', JSON.stringify(unreadDMs));
+      }catch(e){}
+    }
+    window.addEventListener('beforeunload', () => { saveAvatars(avatars);
+       saveSettings(settings);
+        saveUnreadToStorage();
+       });
+
+    // ---- Media control handlers: toggle camera, toggle mute, hangup ----
+    async function toggleCamera(){
+      if(!localStream){
+        try{
+          await ensureLocalStream();
+          showVideoArea();
+        }catch(e){ log('toggleCamera: no permission', e && e.message); return; }
+      }
+      const videoTracks = localStream.getVideoTracks();
+      if(videoTracks && videoTracks.length>0){
+        camEnabled = !camEnabled;
+        videoTracks.forEach(t=>t.enabled = camEnabled);
+        updateMediaControlButtons();
+      } else {
+        try{
+          const s = await navigator.mediaDevices.getUserMedia({video:true});
+          s.getVideoTracks().forEach(t=> localStream.addTrack(t));
+          localVideo.srcObject = localStream;
+          camEnabled = true;
+          updateMediaControlButtons();
+        }catch(e){ log('unable to enable camera', e && e.message); }
+      }
+      // presence unchanged; no broadcast needed for camera on/off
+    }
+
+    async function startScreenShare(){
+  if(isSharingScreen) return;
+  try{
+    const s = await navigator.mediaDevices.getDisplayMedia({
+video: true, audio: false,
+  audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+});
+    if(!s) return;
+    screenStream = s;
+    isSharingScreen = true;
+
+    try{ localVideo.srcObject = screenStream; }catch(e){ log('local preview assign failed', e && e.message); }
+
+    
+const screenVid = screenStream.getVideoTracks()[0];
+const screenAud = screenStream.getAudioTracks()[0];
+for (const [pid, mc] of calls.entries()) {
+    try {
+        const pc = mc && mc.peerConnection;
+        if (!pc) continue;
+        const senders = pc.getSenders ? pc.getSenders() : [];
+        const vSender = senders.find(s => s.track && s.track.kind === "video");
+        const aSender = senders.find(s => s.track && s.track.kind === "audio");
+        if (vSender && screenVid) await vSender.replaceTrack(screenVid);
+        if (aSender && screenAud) await aSender.replaceTrack(screenAud);
+        if (!aSender && screenAud) pc.addTrack(screenAud, screenStream);
+    } catch(e){}
+}
+const screenTrack = screenStream.getVideoTracks()[0];
+
+    if(screenTrack) await replaceOutgoingVideoTrack(screenTrack);
+
+    if(screenTrack) screenTrack.onended = () => { stopScreenShare(); };
+
+    if(shareScreenBtn){ shareScreenBtn.classList.add('active'); shareScreenBtn.textContent = '⛔'; shareScreenBtn.setAttribute('aria-pressed','true'); }
+    log('screen share started');
+  }catch(e){
+    log('startScreenShare failed', e && e.message);
+    alert('Screen share failed: ' + (e && e.message));
+  }
+}
+
+async function stopScreenShare(){
+  if(!isSharingScreen && !screenStream) return;
+  try{
+    if(screenStream){
+      screenStream.getTracks().forEach(t=>{ try{ t.stop(); }catch(_){} });
+      screenStream = null;
+    }
+    isSharingScreen = false;
+
+    if(localStream){ try{ localVideo.srcObject = localStream; }catch(e){ log('restore local preview failed', e && e.message); } }
+    else localVideo.srcObject = null;
+
+    await restoreCameraTrack();
+
+    if(shareScreenBtn){ shareScreenBtn.classList.remove('active'); shareScreenBtn.textContent = '🖥️'; shareScreenBtn.setAttribute('aria-pressed','false'); }
+    log('screen share stopped');
+  }catch(e){
+    log('stopScreenShare failed', e && e.message);
+  }
+}
+
+// wire the toggle button (safe if element exists)
+if (typeof shareScreenBtn !== 'undefined' && shareScreenBtn) {
+  shareScreenBtn.addEventListener('click', async () => {
+    if(isSharingScreen) await stopScreenShare();
+    else await startScreenShare();
+  });
+}
+
+
+    async function toggleMute(){ if(!localStream){ try{ await ensureLocalStream();
+       showVideoArea();
+       }catch(e){ log('toggleMute: no permission', e && e.message);
+        return;
+       } } const audioTracks = localStream.getAudioTracks();
+        if(audioTracks && audioTracks.length>0){ micEnabled = !micEnabled;
+           audioTracks.forEach(t=>t.enabled = micEnabled);
+            updateMediaControlButtons();
+           } else { try{ const s = await navigator.mediaDevices.getUserMedia({audio:true});
+            s.getAudioTracks().forEach(t=> localStream.addTrack(t));
+             localVideo.srcObject = localStream;
+              micEnabled = true;
+               updateMediaControlButtons();
+               }catch(e){ log('unable to enable mic', e && e.message);
+                } } }
+
+                hangupBtn.addEventListener('click', ()=>{
+  try{ if(isSharingScreen) stopScreenShare(); }catch(e){ log('hangup stopScreenShare error', e && e.message); }
+
+  // Leave all calls
+  for(const pid of Array.from(calls.keys())) leaveCall(pid);
+   // Stop local media tracks
+    if(localStream){ try{ localStream.getTracks().forEach(t=> t.stop());
+     }catch(e){} localStream = null;
+      localVideo.srcObject = null;
+     } hideVideoArea();
+      camEnabled = false;
+       micEnabled = false;
+        updateMediaControlButtons();
+       });
+
+toggleCamBtn && toggleCamBtn.addEventListener('click', toggleCamera); toggleMuteBtn && toggleMuteBtn.addEventListener('click', toggleMute);
+
+// Removed hardcoded keybindings for 'm' and 'v' — replaced by configurable keybinds in settings.
+
+// ---- Keybind customization for toggle camera/mute ----
+
+// Normalize a KeyboardEvent to a string key descriptor used in settings.
+// Examples: "v", "m", "Ctrl+M", "Alt+Shift+V" 
+function keyEventToDescriptor(e){ const parts = [];
+   if(e.ctrlKey) parts.push('Ctrl');
+    if(e.metaKey) parts.push('Meta');
+    if(e.altKey) parts.push('Alt');
+     if(e.shiftKey) parts.push('Shift');
+      const k = e.key && e.key.length === 1 ? e.key.toLowerCase() : e.key; if(k && typeof k === 'string'){ const normalized = (k.length === 1) ? k : k;
+         parts.push(normalized);
+         } return parts.join('+');
+         }
+
+// Check whether a KeyboardEvent matches a descriptor string stored in settings. 
+// descriptor examples: "v", "m", "Ctrl+M", "Alt+Shift+v" 
+function eventMatchesDescriptor(e, descriptor){ if(!descriptor || !descriptor.length) return false;
+   const d = descriptor.split('+').map(s => s.trim()).filter(Boolean);
+    const needCtrl = d.includes('Ctrl'); const needMeta = d.includes('Meta'); const needAlt = d.includes('Alt');
+     const needShift = d.includes('Shift');
+
+if(!!e.ctrlKey !== !!needCtrl) return false; if(!!e.metaKey !== !!needMeta) return false;
+ if(!!e.altKey !== !!needAlt) return false; if(!!e.shiftKey !== !!needShift) return false;
+
+const keyToken = d[d.length-1]; if(!keyToken) return false;
+
+const evKey = (e.key && e.key.length === 1) ? e.key.toLowerCase() : e.key; const tokenNormalized = (keyToken.length === 1) ? keyToken.toLowerCase() : keyToken; return evKey === tokenNormalized;
+ }
+
+// Initialize keybind UI values from settings
+ function initKeybindInputs(){ const camInput = document.getElementById('keybindToggleCam');
+  const micInput = document.getElementById('keybindToggleMic');
+   if(!camInput || !micInput) return;
+    camInput.value = settings.keybindToggleCam || '';
+     micInput.value = settings.keybindToggleMic || '';
+
+const captureHandler = (ev) => { ev.preventDefault(); ev.stopPropagation(); if(ev.key === 'Backspace'){ ev.target.value = ''; return; } const descriptor = keyEventToDescriptor(ev); ev.target.value = descriptor; };
+
+camInput.addEventListener('keydown', captureHandler); micInput.addEventListener('keydown', captureHandler);
+
+const saveHandler = () => { settings.keybindToggleCam = (document.getElementById('keybindToggleCam') || {value:''}).value.trim();
+ settings.keybindToggleMic = (document.getElementById('keybindToggleMic') || {value:''}).value.trim();
+  saveSettings(settings);
+ };
+  camInput.addEventListener('blur', saveHandler); micInput.addEventListener('blur', saveHandler);
+ }
+
+// Global keydown handler using saved keybinds 
+document.addEventListener('keydown', (e) => { 
+  // ignore when typing in inputs/textareas/contenteditable
+   const active = document.activeElement;
+    if(active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+
+const camBind = (settings.keybindToggleCam || '').trim();
+ const micBind = (settings.keybindToggleMic || '').trim();
+  try{ if(camBind && eventMatchesDescriptor(e, camBind)){ e.preventDefault(); toggleCamera();
+     return; } if(micBind && eventMatchesDescriptor(e, micBind)){ e.preventDefault();
+       toggleMute();
+        return;
+       } }catch(err){ console.warn('keybind match error', err);
+
+        } });
+
+// Initialize 
+(function init(){ loadGroups();
+   loadUnreadFromStorage();
+    if(!groups['general']) groups['general']=new Set();
+     currentGroup='general';
+      renderGroups();
+       renderMembersPanel();
+        updateJoinButtonVisibility();
+         const saved = localStorage.getItem('peerUsername');
+          if(saved) document.getElementById('username').value = saved;
+           settings = loadSettings(); applyTheme(settings); initColorInputs();
+            initKeybindInputs(); avatars = loadAvatars(); updateGroupBadges();
+             updateDmDropdown();
+             })();
+
+const observer = new MutationObserver(muts=>{ for(const m of muts){ for(const n of m.addedNodes){ if(n.nodeType!==1) continue;
+   if(n.classList && n.classList.contains('videoCard')) ensureFsForCard(n); } } });
+    observer.observe(videoGrid,{childList:true});
+
+hideVideoArea();
+
+// Helpers: expose toggle functions for debugging if needed window.GW = { toggleCamera, toggleMute, hangup: ()=> hangupBtn.click(), showEveryoneTogether, settingsOpen: ()=> settingsModal.style.display === 'block' }; 
+  </script>
+ 
+
+
+<script>
+function playIncomingCallRingtone(){
+  const p=document.getElementById('ringtonePlayer');
+  if(p&&p.src){p.loop=true;p.play().catch(()=>{});}
+}
+function stopIncomingCallRingtone(){
+  const p=document.getElementById('ringtonePlayer');
+  if(!p)return; p.pause(); p.currentTime=0;
+}
+document.getElementById('ringtoneFile')?.addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f)return;
+  const url=URL.createObjectURL(f);
+  document.getElementById('ringtonePlayer').src=url;
+});
+
+// Hook incoming modal open
+const _showIncoming = window.handleIncomingCallPrompt;
+if(_showIncoming){
+  window.handleIncomingCallPrompt = function(x){
+    playIncomingCallRingtone();
+    return _showIncoming(x);
+  }
+}
+
+// Stop ringtone on accept/decline
+document.addEventListener('click',e=>{
+  if(e.target.id==='acceptCallBtn' || e.target.id==='declineCallBtn'){
+    stopIncomingCallRingtone();
+  }
+});
+</script>
+
+
+<script>
+
+document.getElementById("sendFileBtn")?.addEventListener("click", async ()=>{
+    const input = document.getElementById("fileToSend");
+    if(!input || !input.files || input.files.length === 0) return alert("No file selected");
+    const f = input.files[0];
+    const me = (document.getElementById('username') && document.getElementById('username').value) || (window.settings && window.settings.username) || 'Me';
+    const reader = new FileReader();
+    reader.onload = ()=>{
+        const dataUrl = reader.result;
+        const payload = {
+            type: "file",
+            messageId: (Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,8)),
+            from: me,
+            filename: f.name,
+            dataUrl: dataUrl,
+            time: new Date().toLocaleTimeString()
+        };
+        // send to all open connections
+        if(window.conns && typeof window.conns.entries === 'function'){
+            for(const [pid, conn] of window.conns.entries()){
+                try{
+                    if(conn && conn.open){
+                        if(typeof safeSend === 'function') safeSend(conn, payload);
+                        else conn.send(payload);
+                    }
+                }catch(e){
+                    console.warn('file send to', pid, 'failed', e && e.message);
+                }
+            }
+        }
+        // also show a local log link
+        try{
+            const link = '<a href="'+dataUrl+'" download="'+f.name+'" style="font-weight:700;color:var(--accent)">'+f.name+'</a>';
+            const mini = document.getElementById('miniLog');
+            if(mini) mini.innerHTML = link + '<br>' + mini.innerHTML;
+            const msgs = document.getElementById('messages');
+            if(msgs){
+                const wrap = document.createElement('div');
+                wrap.className = 'message';
+                wrap.innerHTML = `<div class="avatar">📄</div><div class="bubble"><div class="meta">You</div><div class="body">${link}</div></div>`;
+                msgs.appendChild(wrap);
+                msgs.scrollTop = msgs.scrollHeight;
+            }
+        }catch(e){}
+    };
+    reader.readAsDataURL(f);
+});
+</script>
+
+
+
+<script>
+</script>
+
+
+<script>
+// handle incoming file payloads if not already handled by the main data parser
+function handleIncomingFileSimple(payload){
+    try{
+        const from = payload.from || 'Unknown';
+        const name = payload.filename || payload.name || 'file';
+        const dataUrl = payload.dataUrl || payload.data || '';
+        const link = '<a href="'+dataUrl+'" download="'+name+'" style="font-weight:700;color:var(--accent)">'+name+'</a>';
+        const mini = document.getElementById('miniLog');
+        if(mini) mini.innerHTML = link + '<br>' + mini.innerHTML;
+        const msgs = document.getElementById('messages');
+        if(msgs){
+            const wrap = document.createElement('div');
+            wrap.className = 'message';
+            wrap.innerHTML = `<div class="avatar">📄</div><div class="bubble"><div class="meta">${from}</div><div class="body">${link}</div></div>`;
+            msgs.appendChild(wrap);
+            msgs.scrollTop = msgs.scrollHeight;
+        }
+    }catch(e){ console.warn('handleIncomingFileSimple fail', e); }
+}
+// try to catch incoming plain objects sent over BroadcastChannel or elsewhere
+window.addEventListener('message', (ev)=>{
+    const d = ev.data;
+    if(!d || d.type !== 'file') return;
+    handleIncomingFileSimple(d);
+});
+</script>
+</body>
+</html>
